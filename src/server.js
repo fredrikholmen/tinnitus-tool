@@ -119,9 +119,15 @@ const server = http.createServer(async (req, res) => {
   } else if (fs.existsSync(publicPath) && !fs.statSync(publicPath).isDirectory()) {
     filePath = publicPath;
   } else {
-    res.writeHead(404);
-    res.end("Not found");
-    return;
+    // SPA fallback: serve index.html for client-side routing
+    const indexPath = path.join(__dirname, "..", "dist", "index.html");
+    if (fs.existsSync(indexPath)) {
+      filePath = indexPath;
+    } else {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
   }
 
   const ext = path.extname(filePath);
@@ -131,5 +137,6 @@ const server = http.createServer(async (req, res) => {
 
 const PORT = process.env.PORT || 3021;
 server.listen(PORT, () => {
-  console.log(`API server running: http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Serving static files from: ${path.join(__dirname, "..", "dist")}`);
 });

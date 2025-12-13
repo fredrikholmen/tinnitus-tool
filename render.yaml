@@ -1,17 +1,11 @@
 services:
-  # Admin Portal App
   - type: web
     name: tinnitus-tool
     env: node
     buildCommand: |
-      cd tinnitus-tool
       pnpm install
       pnpm build
-    startCommand: cd tinnitus-tool && pnpm start
+    startCommand: pnpm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
-      - key: NEXT_PUBLIC_API_URL
-        value: https://tinnitus-tool.onrender.com
