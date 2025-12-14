@@ -203,6 +203,67 @@ export default function About() {
           </p>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Credits & Acknowledgments</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div>
+              <h3 className="font-semibold text-lg mb-2">Tool Developer</h3>
+              <p className="text-muted-foreground">
+                This web application was developed by{' '}
+                <a
+                  href="https://www.linkedin.com/in/fredrikholmen/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline font-medium"
+                >
+                  Fredrik Holmén
+                </a>
+                {' '}as an open-source implementation of the research methodology.
+              </p>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="font-semibold text-lg mb-2">Research & Intellectual Property</h3>
+              <p className="text-muted-foreground mb-3">
+                The sound therapy method, algorithm, and research findings are the intellectual property of the
+                research team. This tool implements the methodology described in the following peer-reviewed publication:
+              </p>
+              <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                <p className="text-sm font-medium">
+                  <strong>Yukhnovich et al. (2025)</strong>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  "Chronic tinnitus is quietened by sound therapy using a novel cross-frequency de-correlating
+                  stimulus modulation."
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <em>Hearing Research</em>
+                </p>
+                <a
+                  href="https://www.sciencedirect.com/science/article/pii/S0378595525001534"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2"
+                >
+                  <Button variant="outline" size="sm">
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View Article
+                  </Button>
+                </a>
+              </div>
+              <p className="text-xs text-muted-foreground italic mt-3">
+                All rights to the research methodology, algorithm, and scientific findings belong to the authors
+                and their respective institutions as specified in the publication. This tool is provided for
+                research and educational purposes in accordance with the article's open access terms.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
