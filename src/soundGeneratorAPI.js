@@ -336,7 +336,7 @@ function generateBlock({ fsHz, seconds, band, mode, rng, rampSec, targetPeak }) 
  * @param {Object} band - Frequency band {lo, hi}
  * @param {Object} config - Generation configuration
  */
-function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, mode, targetPeak, seed, onProgress }) {
+async function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, mode, targetPeak, seed, onProgress, progressScale = 1.0 }) {
   fs.mkdirSync(path.dirname(filepath), { recursive: true });
   const fd = fs.openSync(filepath, "w");
 
@@ -363,14 +363,16 @@ function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, 
     });
     writePcm16(fd, samples);
     
-    // Report progress (each file is 50% of total, so this file is 0-50%)
+    // Report progress (scaled by progressScale - 0.5 if sham enabled, 1.0 if not)
     if (onProgress) {
       onProgress({
         file: path.basename(filepath),
         block: b + 1,
         totalBlocks: blocks,
-        progress: ((b + 1) / blocks) * 0.5, // First file is 0-50%
+        progress: ((b + 1) / blocks) * progressScale,
       });
+      // Yield control to allow SSE stream to flush
+      await new Promise(resolve => setImmediate(resolve));
     }
   }
 
@@ -391,8 +393,9 @@ function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, 
         file: path.basename(filepath),
         block: blocks + 1,
         totalBlocks: totalBlocks,
-        progress: 0.5, // First file complete
+        progress: progressScale, // File complete
       });
+      await new Promise(resolve => setImmediate(resolve));
     }
   }
 
@@ -418,6 +421,7 @@ export async function generateSoundFiles({
   minutes = 60,
   useAltActive = false,
   useAltSham = false,
+  generateSham = false,
   onProgress = null
 }) {
   // Map tinnitus frequency to nearest match key from paper
@@ -446,6 +450,8 @@ export async function generateSoundFiles({
   const activePath = path.join(outDir, `active_${mode}_${Math.round(tinnitusHz)}Hz_${minutes}min.wav`);
   const shamPath = path.join(outDir, `sham_${mode}_${Math.round(tinnitusHz)}Hz_${minutes}min.wav`);
 
+  const progressScale = generateSham ? 0.5 : 1.0;
+  
   const config = {
     sampleRate,
     minutes,
@@ -454,8 +460,9 @@ export async function generateSoundFiles({
     mode,
     targetPeak,
     seed,
+    progressScale,
     onProgress: onProgress ? (progress) => {
-      // Adjust progress: active file is 0-50%
+      // Adjust progress: active file is 0-50% if sham is enabled, 0-100% if not
       onProgress({
         ...progress,
         progress: progress.progress,
@@ -464,26 +471,30 @@ export async function generateSoundFiles({
     } : null,
   };
 
-  generateFile(activePath, activeBand, config);
+  await generateFile(activePath, activeBand, config);
   
-  // Update config for sham file (50-100%)
-  config.onProgress = onProgress ? (progress) => {
-    onProgress({
-      ...progress,
-      progress: 0.5 + (progress.progress * 0.5), // Second file is 50-100%
-      fileType: 'sham',
-    });
-  } : null;
-  
-  generateFile(shamPath, shamBand, config);
+  let shamResult = null;
+  if (generateSham) {
+    // Update config for sham file (50-100%)
+    config.onProgress = onProgress ? (progress) => {
+      onProgress({
+        ...progress,
+        progress: 0.5 + (progress.progress * 0.5), // Second file is 50-100%
+        fileType: 'sham',
+      });
+    } : null;
+    
+    await generateFile(shamPath, shamBand, config);
+    shamResult = path.basename(shamPath);
+  }
 
   return {
     active: path.basename(activePath),
-    sham: path.basename(shamPath),
+    sham: shamResult,
     tinnitusHz: Math.round(tinnitusHz),
     mode,
     minutes,
     activeBand,
-    shamBand,
+    shamBand: generateSham ? shamBand : null,
   };
 }

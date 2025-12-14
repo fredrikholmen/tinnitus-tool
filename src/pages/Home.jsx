@@ -71,6 +71,7 @@ export default function Home() {
   const [genTinnitusHz, setGenTinnitusHz] = useState(8000)
   const [useAltActive, setUseAltActive] = useState(false)
   const [useAltSham, setUseAltSham] = useState(false)
+  const [generateSham, setGenerateSham] = useState(false) // Optional: only for research
 
   const audioRef = useRef(null)
 
@@ -295,7 +296,8 @@ export default function Home() {
           minutes,
           useAltActive,
           useAltSham,
-          useProgress: true, // Request progress updates
+          generateSham,
+          useProgress: true, // Request SSE progress updates
         }),
       })
 
@@ -327,21 +329,24 @@ export default function Home() {
               try {
                 const data = JSON.parse(line.slice(6))
                 
-                if (data.type === 'complete') {
+                if (data.type === 'start') {
+                  setGenerationStatus(data.message || 'Starting generation...')
+                  setGenerationProgress(0)
+                } else if (data.type === 'complete') {
                   setGeneratedFiles(data.result)
                   setGenerationProgress(100)
                   setGenerationStatus('Complete!')
                 } else if (data.type === 'error') {
                   throw new Error(data.error)
-                } else if (data.type === 'start') {
-                  setGenerationStatus(data.message || 'Starting...')
-                  setGenerationProgress(0)
                 } else if (data.progress !== undefined) {
-                  // Progress update
-                  const progress = Math.round(data.progress * 100)
-                  setGenerationProgress(progress)
+                  // Progress update from server (format: { file, block, totalBlocks, progress, fileType })
+                  const progressPercent = Math.round(data.progress * 100)
+                  setGenerationProgress(progressPercent)
+                  
                   const fileType = data.fileType === 'active' ? 'Active' : 'Sham'
-                  setGenerationStatus(`Generating ${fileType} file... ${data.block}/${data.totalBlocks} blocks`)
+                  setGenerationStatus(
+                    `Generating ${fileType} file... ${data.block}/${data.totalBlocks} blocks (${progressPercent}%)`
+                  )
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e, line)
@@ -356,6 +361,7 @@ export default function Home() {
       console.error('Generation error:', error)
       alert(`Error generating sounds: ${error.message}`)
       setGenerationStatus('Error')
+      setGenerationProgress(0)
     } finally {
       setGenerating(false)
       setTimeout(() => {
@@ -438,12 +444,12 @@ export default function Home() {
   return (
     <div className="max-w-7xl mx-auto space-y-4 p-4">
       {/* Header - Compact */}
-      <div className="text-center space-y-1 mb-4">
+      {/* <div className="text-center space-y-1 mb-4">
         <h1 className="text-2xl font-bold text-primary">Tinnitus Assessment & Therapy</h1>
         <p className="text-xs text-muted-foreground">
           Assess your tinnitus profile and generate personalized sound therapy files
         </p>
-      </div>
+      </div> */}
 
       {/* Safety Warning - Compact */}
       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-destructive/5 border border-destructive/20 rounded px-3 py-2">
@@ -759,7 +765,7 @@ export default function Home() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -778,16 +784,32 @@ export default function Home() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={useAltSham}
-                  onChange={(e) => setUseAltSham(e.target.checked)}
+                  checked={generateSham}
+                  onChange={(e) => setGenerateSham(e.target.checked)}
                   className="w-4 h-4 rounded border-input"
                 />
-                <span className="text-sm font-medium">Use Alternative Sham Band (C2)</span>
+                <span className="text-sm font-medium">Generate Sham/Control File</span>
               </label>
               <p className="text-xs text-muted-foreground ml-6">
-                Use contingency band if preferred sham band contains inaudible frequencies
+                Optional: Only needed for research comparison. Most users only need the Active therapy file.
               </p>
             </div>
+            {generateSham && (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useAltSham}
+                    onChange={(e) => setUseAltSham(e.target.checked)}
+                    className="w-4 h-4 rounded border-input"
+                  />
+                  <span className="text-sm font-medium">Use Alternative Sham Band (C2)</span>
+                </label>
+                <p className="text-xs text-muted-foreground ml-6">
+                  Use contingency band if preferred sham band contains inaudible frequencies
+                </p>
+              </div>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             Phase Modulation: Subtle timing variations (default). Amplitude Modulation: Volume pulsing effect.
@@ -867,12 +889,13 @@ export default function Home() {
                     {hzToLabelWithNote(generatedFiles.tinnitusHz)} • {generatedFiles.mode} mode • {generatedFiles.minutes} min
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Active Band: {generatedFiles.activeBand.name} • Sham Band: {generatedFiles.shamBand.name}
+                    Active Band: {generatedFiles.activeBand.name}
+                    {generatedFiles.sham && ` • Sham Band: ${generatedFiles.shamBand.name}`}
                   </p>
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`grid gap-4 ${generatedFiles.sham ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                 {/* Active Therapy */}
                 <div className="p-4 border-2 border-primary/30 rounded-lg bg-card space-y-3">
                   <div className="flex items-center justify-between">
@@ -900,32 +923,34 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Control/Sham */}
-                <div className="p-4 border-2 border-border rounded-lg bg-card space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold">Control/Sham</h3>
-                      <p className="text-xs text-muted-foreground">Band: {generatedFiles.shamBand.name}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        onClick={() => playFile(generatedFiles.sham, 'sham')}
-                        variant={playingFile === generatedFiles.sham ? 'default' : 'outline'}
-                        size="sm"
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        {playingFile === generatedFiles.sham ? 'Stop' : 'Play'}
-                      </Button>
-                      <button
-                        onClick={() => downloadFile(generatedFiles.sham)}
-                        className="p-2 hover:bg-accent rounded-md transition-colors border border-border"
-                        title="Download"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
+                {/* Control/Sham - Only show if generated */}
+                {generatedFiles.sham && (
+                  <div className="p-4 border-2 border-border rounded-lg bg-card space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold">Control/Sham</h3>
+                        <p className="text-xs text-muted-foreground">Band: {generatedFiles.shamBand.name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => playFile(generatedFiles.sham, 'sham')}
+                          variant={playingFile === generatedFiles.sham ? 'default' : 'outline'}
+                          size="sm"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          {playingFile === generatedFiles.sham ? 'Stop' : 'Play'}
+                        </Button>
+                        <button
+                          onClick={() => downloadFile(generatedFiles.sham)}
+                          className="p-2 hover:bg-accent rounded-md transition-colors border border-border"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           ) : (

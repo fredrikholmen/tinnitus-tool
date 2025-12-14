@@ -53,6 +53,7 @@ const server = http.createServer(async (req, res) => {
           minutes = 60,
           useAltActive = false,
           useAltSham = false,
+          generateSham = false,
           useProgress = false
         } = params;
 
@@ -78,6 +79,10 @@ const server = http.createServer(async (req, res) => {
           const sendProgress = (progress) => {
             try {
               res.write(`data: ${JSON.stringify(progress)}\n\n`);
+              // Force flush the response to ensure progress is sent immediately
+              if (typeof res.flush === 'function') {
+                res.flush();
+              }
             } catch (e) {
               console.error('Error sending progress:', e);
             }
@@ -90,6 +95,7 @@ const server = http.createServer(async (req, res) => {
             minutes: Number(minutes),
             useAltActive: Boolean(useAltActive),
             useAltSham: Boolean(useAltSham),
+            generateSham: Boolean(generateSham),
             onProgress: sendProgress,
           })
             .then((result) => {
@@ -110,6 +116,7 @@ const server = http.createServer(async (req, res) => {
             minutes: Number(minutes),
             useAltActive: Boolean(useAltActive),
             useAltSham: Boolean(useAltSham),
+            generateSham: Boolean(generateSham),
           });
 
           res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
