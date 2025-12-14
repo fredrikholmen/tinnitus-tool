@@ -54,16 +54,15 @@ export default function Home() {
   const [maxTrials] = useState(16)
   const [lastPair, setLastPair] = useState(null)
   const [upperLimitHz, setUpperLimitHz] = useState(null) // Track upper frequency limit
-  const [tinnitusCharacter, setTinnitusCharacter] = useState(null)
   const [masterLevel, setMasterLevel] = useState(0.08)
-  const [matchGain, setMatchGain] = useState(0.05)
   const [blend, setBlend] = useState(0.5) // 0 = pure tone, 1 = pure noise
   const [toneSliderHz, setToneSliderHz] = useState(8000) // For tone slider assessment
-  const [tnStatus, setTnStatus] = useState('')
   const [abStatus, setAbStatus] = useState('')
   const [exportStatus, setExportStatus] = useState('')
   
   const [generating, setGenerating] = useState(false)
+  const [generationProgress, setGenerationProgress] = useState(0)
+  const [generationStatus, setGenerationStatus] = useState('')
   const [generatedFiles, setGeneratedFiles] = useState(null)
   const [playingFile, setPlayingFile] = useState(null)
   const [audioElement, setAudioElement] = useState(null)
@@ -78,6 +77,13 @@ export default function Home() {
   useEffect(() => {
     if (audioRef.current) {
       setAudioElement(audioRef.current)
+    }
+  }, [])
+
+  // Auto-initialize audio on mount
+  useEffect(() => {
+    if (!audioCtx) {
+      initAudio()
     }
   }, [])
 
@@ -155,20 +161,6 @@ export default function Home() {
 
   const calibrationTone = () => {
     playTone(1000, 1.2, 0.15)
-  }
-
-  const startToneVsNoise = () => {
-    setTnStatus("Playing tone then noise…")
-    playTone(estimateHz, 0.8, 0.12)
-    setTimeout(() => playNarrowbandNoise(estimateHz, 0.8, 0.12), 900)
-    setTimeout(() => {
-      setTnStatus("Pick which is closer.")
-    }, 1800)
-  }
-
-  const pickCharacter = (kind) => {
-    setTinnitusCharacter(kind)
-    setTnStatus(`${kind.toUpperCase()}-like`)
   }
 
   const startAB = () => {
@@ -267,17 +259,11 @@ export default function Home() {
     }, 500)
   }
 
-  const playAtEstimate = () => {
-    playHybrid(estimateHz, 1.2, clamp(matchGain, 0, 0.5), blend)
-  }
-
   const exportConfig = () => {
     const config = {
       tinnitusHz_estimate: Math.round(estimateHz),
-      tinnitusCharacter: tinnitusCharacter ?? "unknown",
       blend: blend,
       masterLevel,
-      matchGain,
       suggestedMode: "phase"
     }
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" })
@@ -296,6 +282,8 @@ export default function Home() {
 
     setGenerating(true)
     setGeneratedFiles(null)
+    setGenerationProgress(0)
+    setGenerationStatus('Initializing...')
 
     try {
       const response = await fetch('/api/generate', {
@@ -307,6 +295,7 @@ export default function Home() {
           minutes,
           useAltActive,
           useAltSham,
+          useProgress: true, // Request progress updates
         }),
       })
 
@@ -315,13 +304,64 @@ export default function Home() {
         throw new Error(error.error || 'Generation failed')
       }
 
-      const result = await response.json()
-      setGeneratedFiles(result)
+      // Handle Server-Sent Events stream
+      if (!response.body) {
+        throw new Error('No response body')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || '' // Keep incomplete message in buffer
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                
+                if (data.type === 'complete') {
+                  setGeneratedFiles(data.result)
+                  setGenerationProgress(100)
+                  setGenerationStatus('Complete!')
+                } else if (data.type === 'error') {
+                  throw new Error(data.error)
+                } else if (data.type === 'start') {
+                  setGenerationStatus(data.message || 'Starting...')
+                  setGenerationProgress(0)
+                } else if (data.progress !== undefined) {
+                  // Progress update
+                  const progress = Math.round(data.progress * 100)
+                  setGenerationProgress(progress)
+                  const fileType = data.fileType === 'active' ? 'Active' : 'Sham'
+                  setGenerationStatus(`Generating ${fileType} file... ${data.block}/${data.totalBlocks} blocks`)
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e, line)
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock()
+      }
     } catch (error) {
       console.error('Generation error:', error)
       alert(`Error generating sounds: ${error.message}`)
+      setGenerationStatus('Error')
     } finally {
       setGenerating(false)
+      setTimeout(() => {
+        setGenerationProgress(0)
+        setGenerationStatus('')
+      }, 2000)
     }
   }
 
@@ -388,7 +428,7 @@ export default function Home() {
   }
 
   const playToneSlider = () => {
-    playHybrid(toneSliderHz, 1.2, clamp(matchGain, 0, 0.5), blend)
+    playHybrid(toneSliderHz, 1.2, 0.12, blend)
   }
 
   const setEstimateFromSlider = () => {
@@ -396,100 +436,137 @@ export default function Home() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="text-center space-y-4 mb-8">
-        <h1 className="text-4xl font-bold text-primary">Tinnitus Assessment & Therapy</h1>
-        <p className="text-lg text-muted-foreground">
+    <div className="max-w-7xl mx-auto space-y-4 p-4">
+      {/* Header - Compact */}
+      <div className="text-center space-y-1 mb-4">
+        <h1 className="text-2xl font-bold text-primary">Tinnitus Assessment & Therapy</h1>
+        <p className="text-xs text-muted-foreground">
           Assess your tinnitus profile and generate personalized sound therapy files
         </p>
       </div>
 
-      <Card className="border-destructive/50 bg-destructive/5">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-destructive mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold text-destructive">Safety First</p>
-              <p className="text-sm text-muted-foreground">
-                Start at low volume. Stop if uncomfortable. Use headphones for best results.
-                Do not use at volumes that could cause hearing damage.
+      {/* Safety Warning - Compact */}
+      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-destructive/5 border border-destructive/20 rounded px-3 py-2">
+        <AlertCircle className="w-3 h-3 text-destructive flex-shrink-0" />
+        <span><strong className="text-destructive">Safety:</strong> Start at low volume. Use headphones.</span>
+      </div>
+
+      {/* Main Content Row: Introduction + Assessment Tools */}
+      <div className="grid grid-cols-12 gap-4">
+        {/* Left Column - Introduction */}
+        <Card className="col-span-3 border-2">
+          <CardContent className="pt-4 pb-4 px-4">
+            <div className="space-y-3">
+              <h2 className="text-lg font-bold text-primary">Do you have tinnitus?</h2>
+              <p className="text-sm leading-relaxed">
+                Use this tool to create a personalized sound therapy file based on your tinnitus pitch. </p>
+                <p className="text-sm leading-relaxed">
+                First use the frequency slider to find your tinnitus frequency, then generate a treatment file, and download the audio to try at a safe, low volume. You should listen to the file daily over six weeks.
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed italic">
+                A research team in the UK reported that after 6 weeks of use, many participants experienced reduced tinnitus loudness — results vary, and this isn't medical advice.
               </p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Audio Setup</CardTitle>
-          <CardDescription>Initialize audio and adjust master volume</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4 flex-wrap">
-            <Button onClick={initAudio} disabled={!!audioCtx}>
-              {audioCtx ? 'Audio Enabled' : 'Enable Audio'}
-            </Button>
-            <Button onClick={calibrationTone} disabled={!audioCtx} variant="outline">
-              <Volume2 className="w-4 h-4 mr-2" />
-              Play 1 kHz Calibration Tone
-            </Button>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Master Level: {masterLevel.toFixed(3)}
-            </label>
-            <Slider
-              value={masterLevel}
-              onChange={(e) => setMasterLevel(Number(e.target.value))}
-              min={0}
-              max={1}
-              step={0.001}
-            />
-          </div>
-        </CardContent>
-      </Card>
+        {/* Right Column - Master Volume, Step 1 & Step 2 */}
+        <div className="col-span-9 grid grid-cols-9 gap-4">
+        {/* Master Volume - Vertical Slider */}
+        <Card className="col-span-1 border-2">
+          <CardContent className="pt-6 pb-6 px-3">
+            <div className="flex flex-col items-center gap-3 h-full">
+              <label className="text-xs font-bold tracking-wider writing-vertical-rl text-center">
+                MASTER
+              </label>
+              <div className="flex-1 flex items-center justify-center w-full">
+                <div 
+                  className="relative h-64 w-12 flex items-center justify-center cursor-pointer select-none"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const slider = e.currentTarget
+                    const rect = slider.getBoundingClientRect()
+                    const height = rect.height
+                    
+                    const updateValue = (clientY) => {
+                      const y = clientY - rect.top
+                      const value = Math.max(0, Math.min(1, 1 - (y / height)))
+                      setMasterLevel(value)
+                    }
+                    
+                    // Update immediately on mousedown
+                    updateValue(e.clientY)
+                    
+                    const handleMouseMove = (moveEvent) => {
+                      moveEvent.preventDefault()
+                      moveEvent.stopPropagation()
+                      // Recalculate rect in case of scrolling/resizing
+                      const currentRect = slider.getBoundingClientRect()
+                      const y = moveEvent.clientY - currentRect.top
+                      const value = Math.max(0, Math.min(1, 1 - (y / currentRect.height)))
+                      setMasterLevel(value)
+                    }
+                    
+                    const handleMouseUp = (upEvent) => {
+                      upEvent.preventDefault()
+                      document.removeEventListener('mousemove', handleMouseMove, { passive: false })
+                      document.removeEventListener('mouseup', handleMouseUp, { passive: false })
+                    }
+                    
+                    document.addEventListener('mousemove', handleMouseMove, { passive: false })
+                    document.addEventListener('mouseup', handleMouseUp, { passive: false })
+                  }}
+                >
+                  {/* Vertical slider track */}
+                  <div className="absolute inset-y-0 left-1/2 w-2 bg-muted rounded-full -translate-x-1/2" />
+                  {/* Slider fill - no transition for instant response */}
+                  <div 
+                    className="absolute bottom-0 left-1/2 w-2 bg-primary rounded-full -translate-x-1/2"
+                    style={{ 
+                      height: `${masterLevel * 100}%`,
+                      transition: 'none' // Disable transitions for instant response
+                    }}
+                  />
+                  {/* Slider thumb - no transition for instant response */}
+                  <div 
+                    className="absolute left-1/2 w-6 h-6 bg-primary rounded-full border-2 border-background shadow-lg -translate-x-1/2 z-10 pointer-events-none"
+                    style={{ 
+                      bottom: `calc(${masterLevel * 100}% - 12px)`,
+                      transition: 'none' // Disable transitions for instant response
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-lg font-mono font-bold text-primary">
+                  {Math.round(masterLevel * 100)}
+                </span>
+                <span className="text-xs text-muted-foreground font-mono">{masterLevel.toFixed(3)}</span>
+              </div>
+              <Button 
+                onClick={calibrationTone} 
+                disabled={!audioCtx} 
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                <Volume2 className="w-4 h-4 mr-1" />
+                Test
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Step 1 — Tone vs Noise Character</CardTitle>
-          <CardDescription>
-            Compare a pure tone vs narrowband noise at the current estimate
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4 flex-wrap">
-            <Button onClick={startToneVsNoise} disabled={!audioCtx} variant="outline">
-              Start (Tone vs Noise)
-            </Button>
-            <Button
-              onClick={() => pickCharacter("tone")}
-              disabled={!audioCtx || tnStatus !== "Pick which is closer."}
-              variant="outline"
-            >
-              More like TONE
-            </Button>
-            <Button
-              onClick={() => pickCharacter("noise")}
-              disabled={!audioCtx || tnStatus !== "Pick which is closer."}
-              variant="outline"
-            >
-              More like NOISE
-            </Button>
-          </div>
-          {tnStatus && (
-            <p className="text-sm text-muted-foreground">{tnStatus}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Step 1.5 — Tone ↔ Noise Blend</CardTitle>
-          <CardDescription>
-            Adjust the blend to match your tinnitus character. Many people experience a "fizzy" mix between tone and noise.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        {/* Step 1 */}
+        <Card className="col-span-3 border-2 h-full">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold">Step 1 — Tone ↔ Noise Blend</CardTitle>
+            <CardDescription className="text-xs">
+              Adjust blend to match your tinnitus character
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <label className="text-sm font-medium">
@@ -521,16 +598,15 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Step 2 — Pitch Match (A/B)</CardTitle>
-          <CardDescription>
-            You'll hear two hybrid sounds: A (lower pitch) then B (higher pitch). Choose which is closer to your tinnitus.
-            Use "Replay" to hear the same pair again without advancing. If B is inaudible, click "B Inaudible" to set an upper limit.
-            Optionally use the tone slider below to manually explore frequencies.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        {/* Step 2 */}
+        <Card className="col-span-5 border-2 h-full">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold">Step 2 — Find your tinnitus frequency</CardTitle>
+            <CardDescription className="text-xs">
+              Choose which sound (A or B) is closer to your tinnitus
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
           <div className="flex items-center gap-4 flex-wrap">
             <Button 
               onClick={startAB} 
@@ -626,43 +702,17 @@ export default function Home() {
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Step 3 — Loudness Match</CardTitle>
-          <CardDescription>
-            Adjust until the played hybrid sound (using your selected blend) matches perceived tinnitus loudness
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4 flex-wrap">
-            <Button onClick={playAtEstimate} disabled={!audioCtx} variant="outline">
-              <Play className="w-4 h-4 mr-2" />
-              Play at Estimate
-            </Button>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Match Gain: {matchGain.toFixed(3)}
-            </label>
-            <Slider
-              value={matchGain}
-              onChange={(e) => setMatchGain(Number(e.target.value))}
-              min={0}
-              max={0.5}
-              step={0.001}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Generate Sound Therapy Files</CardTitle>
-          <CardDescription>
-            Generate personalized sound therapy files. Parameters are pre-filled from your assessment but can be edited.
+      {/* Step 3 - Generation - Full Width Row */}
+      <Card className="border-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-semibold">Step 3 — Generate Sound Therapy Files</CardTitle>
+          <CardDescription className="text-xs">
+            Generate personalized therapy files. Parameters are pre-filled from your assessment.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -746,7 +796,7 @@ export default function Home() {
           <div className="flex items-center gap-4">
             <Button
               onClick={exportConfig}
-              disabled={!audioCtx}
+              disabled={!audioCtx || generating}
               variant="outline"
               className="flex-1"
             >
@@ -771,69 +821,130 @@ export default function Home() {
               )}
             </Button>
           </div>
+          
+          {/* Progress Bar */}
+          {generating && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">{generationStatus || 'Generating...'}</span>
+                <span className="text-muted-foreground font-mono">{generationProgress}%</span>
+              </div>
+              <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300 ease-out"
+                  style={{ width: `${generationProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This may take 20 seconds to 10 minutes depending on file duration
+              </p>
+            </div>
+          )}
+          
           {exportStatus && (
             <p className="text-sm text-muted-foreground">{exportStatus}</p>
           )}
+        </CardContent>
+      </Card>
 
-          {generatedFiles && (
-            <div className="space-y-4 pt-4 border-t">
-              <p className="text-sm font-medium text-muted-foreground">
-                Generated files: {hzToLabelWithNote(generatedFiles.tinnitusHz)}, {generatedFiles.mode} mode, {generatedFiles.minutes}min
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Active Therapy</p>
-                  <p className="text-xs text-muted-foreground">
-                    Band: {generatedFiles.activeBand.name}
+      {/* Results Area - DAW Output Section - Empty until files are generated */}
+      <Card className={`border-2 transition-all ${generatedFiles ? 'border-primary/50 bg-primary/5' : 'border-dashed border-muted-foreground/30 bg-muted/20'}`}>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Volume2 className="w-5 h-5" />
+            Generated Files
+          </CardTitle>
+          <CardDescription className="text-xs">
+            {generatedFiles ? 'Your personalized therapy files are ready' : 'Complete the steps above to generate your therapy files'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {generatedFiles ? (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-3 bg-card rounded border">
+                <div>
+                  <p className="text-sm font-semibold">
+                    {hzToLabelWithNote(generatedFiles.tinnitusHz)} • {generatedFiles.mode} mode • {generatedFiles.minutes} min
                   </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={() => playFile(generatedFiles.active, 'active')}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <Play className="w-4 h-4 mr-2" />
-                      {playingFile === generatedFiles.active ? 'Stop' : 'Play'}
-                    </Button>
-                    <button
-                      onClick={() => downloadFile(generatedFiles.active)}
-                      className="p-2 hover:bg-accent rounded-md transition-colors"
-                      title="Download"
-                    >
-                      <Download className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                    </button>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Active Band: {generatedFiles.activeBand.name} • Sham Band: {generatedFiles.shamBand.name}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Active Therapy */}
+                <div className="p-4 border-2 border-primary/30 rounded-lg bg-card space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-primary">Active Therapy</h3>
+                      <p className="text-xs text-muted-foreground">Band: {generatedFiles.activeBand.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => playFile(generatedFiles.active, 'active')}
+                        variant={playingFile === generatedFiles.active ? 'default' : 'outline'}
+                        size="sm"
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        {playingFile === generatedFiles.active ? 'Stop' : 'Play'}
+                      </Button>
+                      <button
+                        onClick={() => downloadFile(generatedFiles.active)}
+                        className="p-2 hover:bg-accent rounded-md transition-colors border border-border"
+                        title="Download"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Control/Sham</p>
-                  <p className="text-xs text-muted-foreground">
-                    Band: {generatedFiles.shamBand.name}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={() => playFile(generatedFiles.sham, 'sham')}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <Play className="w-4 h-4 mr-2" />
-                      {playingFile === generatedFiles.sham ? 'Stop' : 'Play'}
-                    </Button>
-                    <button
-                      onClick={() => downloadFile(generatedFiles.sham)}
-                      className="p-2 hover:bg-accent rounded-md transition-colors"
-                      title="Download"
-                    >
-                      <Download className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                    </button>
+
+                {/* Control/Sham */}
+                <div className="p-4 border-2 border-border rounded-lg bg-card space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold">Control/Sham</h3>
+                      <p className="text-xs text-muted-foreground">Band: {generatedFiles.shamBand.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => playFile(generatedFiles.sham, 'sham')}
+                        variant={playingFile === generatedFiles.sham ? 'default' : 'outline'}
+                        size="sm"
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        {playingFile === generatedFiles.sham ? 'Stop' : 'Play'}
+                      </Button>
+                      <button
+                        onClick={() => downloadFile(generatedFiles.sham)}
+                        className="p-2 hover:bg-accent rounded-md transition-colors border border-border"
+                        title="Download"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+              <div className="w-16 h-16 rounded-full border-4 border-dashed border-muted-foreground/30 flex items-center justify-center">
+                <Volume2 className="w-8 h-8 text-muted-foreground/30" />
+              </div>
+              <p className="text-sm text-muted-foreground font-medium">
+                Complete Steps 1-3 to generate your therapy files
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                Generated files will appear here
+              </p>
+            </div>
           )}
-
-          <audio ref={audioRef} className="hidden" />
         </CardContent>
       </Card>
+
+      <audio ref={audioRef} className="hidden" />
     </div>
   )
 }

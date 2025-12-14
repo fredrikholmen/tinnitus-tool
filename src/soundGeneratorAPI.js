@@ -184,9 +184,12 @@ function log2(x) {
 // SMR (Spectral Modulation Rate) array - modulates the frequency-dependent modulation
 function buildSMRArray(N, fsHz, pPhase) {
   const S = new Float32Array(N);
+  const invFsHz = 1.0 / fsHz;
+  const tauNu = TAU * nu;
+  let t = 0;
   for (let i = 0; i < N; i++) {
-    const t = i / fsHz;
-    S[i] = mu + r * Math.sin(pPhase + TAU * nu * t);
+    S[i] = mu + r * Math.sin(pPhase + tauNu * t);
+    t += invFsHz;
   }
   return S;
 }
@@ -194,9 +197,12 @@ function buildSMRArray(N, fsHz, pPhase) {
 // Precompute omega term: 2π ω t (for Eq 2, 3)
 function buildOmegaArray(N, fsHz) {
   const W = new Float32Array(N);
+  const invFsHz = 1.0 / fsHz;
+  const tauOmega = TAU * omega;
+  let t = 0;
   for (let i = 0; i < N; i++) {
-    const t = i / fsHz;
-    W[i] = TAU * omega * t;
+    W[i] = tauOmega * t;
+    t += invFsHz;
   }
   return W;
 }
@@ -244,6 +250,16 @@ function generateBlock({ fsHz, seconds, band, mode, rng, rampSec, targetPeak }) 
   const c = Math.sqrt(band.lo * band.hi);
   const out = new Float32Array(N);
 
+  // Pre-compute time array once per block (optimization)
+  // Use incremental addition for better performance
+  const timeArray = new Float32Array(N);
+  const invFsHz = 1.0 / fsHz;
+  let t = 0;
+  for (let i = 0; i < N; i++) {
+    timeArray[i] = t;
+    t += invFsHz;
+  }
+
   // Synthesis: sum harmonics (Eq 1)
   for (let n = nMin; n <= nMax; n++) {
     const freq = n * f0;  // Harmonic frequency
@@ -255,20 +271,32 @@ function generateBlock({ fsHz, seconds, band, mode, rng, rampSec, targetPeak }) 
     // Eq (4): F_n = log2( (n f0) / c )
     // Frequency-dependent modulation index
     const Fn = log2(freq / c);
+    
+    // Pre-compute constants outside inner loop (optimization)
+    const omegaFreq = TAU * freq;  // 2π * freq (constant per harmonic)
+    const tauFn = TAU * Fn;  // 2π * Fn (constant per harmonic)
+    
+    // Pre-compute modulation terms if in band (optimization)
+    let modArray = null;
+    if (inBand) {
+      modArray = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        // Shared modulation angle: 2π[ωt + F_n S(t)] + q
+        const modAngle = W[i] + tauFn * S[i] + qPhase;
+        modArray[i] = Math.sin(modAngle);
+      }
+    }
 
+    // Inner loop: generate samples for this harmonic
     for (let i = 0; i < N; i++) {
-      // Shared modulation angle: 2π[ωt + F_n S(t)] + q
-      // This is the cross-frequency de-correlating modulation
-      const modAngle = W[i] + TAU * (Fn * S[i]) + qPhase;
-      const modSin = Math.sin(modAngle);
-
       // Eq (2): Amplitude modulation (default)
       let A = 1.0;
       // Eq (3): Phase modulation (alternative)
       let psi = 0.0;
       
       // Apply modulation only to frequencies within the target band
-      if (inBand) {
+      if (inBand && modArray) {
+        const modSin = modArray[i];
         if (mode === "amplitude") {
           // Eq (2): A(t) = 1 + d sin(2π[ωt + F_n S(t)] + q)
           // Range: 0..2, mean 1
@@ -282,8 +310,7 @@ function generateBlock({ fsHz, seconds, band, mode, rng, rampSec, targetPeak }) 
 
       // Eq (1): Carrier signal with modulation
       // sin(2π f t + φ + ψ)
-      const t = i / fsHz;
-      const s = Math.sin(TAU * freq * t + phi + psi);
+      const s = Math.sin(omegaFreq * timeArray[i] + phi + psi);
       out[i] += A * s;
     }
   }
@@ -309,7 +336,7 @@ function generateBlock({ fsHz, seconds, band, mode, rng, rampSec, targetPeak }) 
  * @param {Object} band - Frequency band {lo, hi}
  * @param {Object} config - Generation configuration
  */
-function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, mode, targetPeak, seed }) {
+function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, mode, targetPeak, seed, onProgress }) {
   fs.mkdirSync(path.dirname(filepath), { recursive: true });
   const fd = fs.openSync(filepath, "w");
 
@@ -319,6 +346,7 @@ function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, 
   const totalSec = minutes * 60;
   const blocks = Math.floor(totalSec / blockSec);
   const remainder = totalSec - blocks * blockSec;
+  const totalBlocks = blocks + (remainder > 1e-6 ? 1 : 0);
 
   // Create RNG instance for this file (ensures reproducibility with seed)
   const rng = new XorShift32(seed);
@@ -334,6 +362,16 @@ function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, 
       targetPeak,
     });
     writePcm16(fd, samples);
+    
+    // Report progress (each file is 50% of total, so this file is 0-50%)
+    if (onProgress) {
+      onProgress({
+        file: path.basename(filepath),
+        block: b + 1,
+        totalBlocks: blocks,
+        progress: ((b + 1) / blocks) * 0.5, // First file is 0-50%
+      });
+    }
   }
 
   if (remainder > 1e-6) {
@@ -347,6 +385,15 @@ function generateFile(filepath, band, { sampleRate, minutes, blockSec, rampSec, 
       targetPeak,
     });
     writePcm16(fd, samples);
+    
+    if (onProgress) {
+      onProgress({
+        file: path.basename(filepath),
+        block: blocks + 1,
+        totalBlocks: totalBlocks,
+        progress: 0.5, // First file complete
+      });
+    }
   }
 
   finalizeWav(fd, { sampleRate, numChannels: 1, bitsPerSample: 16 });
@@ -370,7 +417,8 @@ export async function generateSoundFiles({
   mode = "phase", 
   minutes = 60,
   useAltActive = false,
-  useAltSham = false 
+  useAltSham = false,
+  onProgress = null
 }) {
   // Map tinnitus frequency to nearest match key from paper
   const matchKey = nearestMatchKeyKHz(tinnitusHz);
@@ -406,9 +454,27 @@ export async function generateSoundFiles({
     mode,
     targetPeak,
     seed,
+    onProgress: onProgress ? (progress) => {
+      // Adjust progress: active file is 0-50%
+      onProgress({
+        ...progress,
+        progress: progress.progress,
+        fileType: 'active',
+      });
+    } : null,
   };
 
   generateFile(activePath, activeBand, config);
+  
+  // Update config for sham file (50-100%)
+  config.onProgress = onProgress ? (progress) => {
+    onProgress({
+      ...progress,
+      progress: 0.5 + (progress.progress * 0.5), // Second file is 50-100%
+      fileType: 'sham',
+    });
+  } : null;
+  
   generateFile(shamPath, shamBand, config);
 
   return {

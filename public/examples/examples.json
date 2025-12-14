@@ -1,0 +1,86 @@
+[
+  {
+    "frequency": 1000,
+    "frequencyLabel": "1.0 kHz (Low)",
+    "mode": "phase",
+    "filename": "example_1000Hz_phase.wav",
+    "band": "1-2k"
+  },
+  {
+    "frequency": 1000,
+    "frequencyLabel": "1.0 kHz (Low)",
+    "mode": "amplitude",
+    "filename": "example_1000Hz_amplitude.wav",
+    "band": "1-2k"
+  },
+  {
+    "frequency": 2000,
+    "frequencyLabel": "2.0 kHz (Low-Mid)",
+    "mode": "phase",
+    "filename": "example_2000Hz_phase.wav",
+    "band": "1.4-2.8k"
+  },
+  {
+    "frequency": 2000,
+    "frequencyLabel": "2.0 kHz (Low-Mid)",
+    "mode": "amplitude",
+    "filename": "example_2000Hz_amplitude.wav",
+    "band": "1.4-2.8k"
+  },
+  {
+    "frequency": 4000,
+    "frequencyLabel": "4.0 kHz (Mid)",
+    "mode": "phase",
+    "filename": "example_4000Hz_phase.wav",
+    "band": "2.8-5.7k"
+  },
+  {
+    "frequency": 4000,
+    "frequencyLabel": "4.0 kHz (Mid)",
+    "mode": "amplitude",
+    "filename": "example_4000Hz_amplitude.wav",
+    "band": "2.8-5.7k"
+  },
+  {
+    "frequency": 6700,
+    "frequencyLabel": "6.7 kHz (Mid-High)",
+    "mode": "phase",
+    "filename": "example_6700Hz_phase.wav",
+    "band": "5.7-11k"
+  },
+  {
+    "frequency": 6700,
+    "frequencyLabel": "6.7 kHz (Mid-High)",
+    "mode": "amplitude",
+    "filename": "example_6700Hz_amplitude.wav",
+    "band": "5.7-11k"
+  },
+  {
+    "frequency": 8000,
+    "frequencyLabel": "8.0 kHz (High)",
+    "mode": "phase",
+    "filename": "example_8000Hz_phase.wav",
+    "band": "5.7-11k"
+  },
+  {
+    "frequency": 8000,
+    "frequencyLabel": "8.0 kHz (High)",
+    "mode": "amplitude",
+    "filename": "example_8000Hz_amplitude.wav",
+    "band": "5.7-11k"
+  },
+  {
+    "frequency": 11000,
+    "frequencyLabel": "11.0 kHz (Very High)",
+    "mode": "phase",
+    "filename": "example_11000Hz_phase.wav",
+    "band": "8-16k"
+  },
+  {
+    "frequency": 11000,
+    "frequencyLabel": "11.0 kHz (Very High)",
+    "mode": "amplitude",
+    "filename": "example_11000Hz_amplitude.wav",
+    "band": "8-16k"
+  }
+]

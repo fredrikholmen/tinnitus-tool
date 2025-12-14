@@ -20,6 +20,13 @@ export default function Layout({ children }) {
                   Assessment
                 </Button>
               </Link>
+              <Link to="/examples">
+                <Button
+                  variant={location.pathname === '/examples' ? 'default' : 'ghost'}
+                >
+                  Examples
+                </Button>
+              </Link>
               <Link to="/about">
                 <Button
                   variant={location.pathname === '/about' ? 'default' : 'ghost'}

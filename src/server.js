@@ -31,7 +31,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API endpoint for sound generation
+  // API endpoint for sound generation with progress (SSE)
   if (u.pathname.startsWith("/api/generate")) {
     if (req.method !== "POST") {
       res.writeHead(405, { ...corsHeaders, "Content-Type": "application/json" });
@@ -52,7 +52,8 @@ const server = http.createServer(async (req, res) => {
           mode = "phase", 
           minutes = 60,
           useAltActive = false,
-          useAltSham = false 
+          useAltSham = false,
+          useProgress = false
         } = params;
 
         if (!tinnitusHz || tinnitusHz <= 0) {
@@ -61,16 +62,59 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const result = await generateSoundFiles({
-          tinnitusHz: Number(tinnitusHz),
-          mode: String(mode),
-          minutes: Number(minutes),
-          useAltActive: Boolean(useAltActive),
-          useAltSham: Boolean(useAltSham),
-        });
+        // If progress requested, use Server-Sent Events
+        if (useProgress) {
+          res.writeHead(200, {
+            ...corsHeaders,
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no", // Disable buffering for nginx
+          });
 
-        res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
-        res.end(JSON.stringify(result));
+          // Send initial connection message
+          res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting generation...' })}\n\n`);
+
+          const sendProgress = (progress) => {
+            try {
+              res.write(`data: ${JSON.stringify(progress)}\n\n`);
+            } catch (e) {
+              console.error('Error sending progress:', e);
+            }
+          };
+
+          // Run generation asynchronously
+          generateSoundFiles({
+            tinnitusHz: Number(tinnitusHz),
+            mode: String(mode),
+            minutes: Number(minutes),
+            useAltActive: Boolean(useAltActive),
+            useAltSham: Boolean(useAltSham),
+            onProgress: sendProgress,
+          })
+            .then((result) => {
+              // Send final result
+              res.write(`data: ${JSON.stringify({ type: 'complete', result })}\n\n`);
+              res.end();
+            })
+            .catch((error) => {
+              console.error("Generation error:", error);
+              res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+              res.end();
+            });
+        } else {
+          // Standard request without progress
+          const result = await generateSoundFiles({
+            tinnitusHz: Number(tinnitusHz),
+            mode: String(mode),
+            minutes: Number(minutes),
+            useAltActive: Boolean(useAltActive),
+            useAltSham: Boolean(useAltSham),
+          });
+
+          res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        }
       } catch (error) {
         console.error("Generation error:", error);
         res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
@@ -110,8 +154,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Try dist first (production), then public (dev)
+  // Also check for examples in public/examples
   const distPath = path.join(__dirname, "..", "dist", p);
-  const publicPath = path.join(__dirname, "public", p);
+  const publicPath = path.join(__dirname, "..", "public", p);
 
   let filePath;
   if (fs.existsSync(distPath) && !fs.statSync(distPath).isDirectory()) {
