@@ -32,6 +32,31 @@ function hzToLabelWithNote(hz) {
   return freqLabel
 }
 
+// Parse band name (e.g., "1-2k", "1.4-2.8k") to get low and high frequencies
+function parseBandFrequencies(bandName) {
+  const match = bandName.match(/(\d+\.?\d*)-(\d+\.?\d*)k/)
+  if (match) {
+    const low = parseFloat(match[1]) * 1000
+    const high = parseFloat(match[2]) * 1000
+    return { low, high }
+  }
+  return null
+}
+
+// Get band label based on frequency range
+function getBandLabel(bandName) {
+  const freqs = parseBandFrequencies(bandName)
+  if (!freqs) return bandName
+  
+  const { low } = freqs
+  if (low < 2000) return 'Low'
+  if (low < 4000) return 'Low-Mid'
+  if (low < 6000) return 'Mid'
+  if (low < 9000) return 'Mid-High'
+  if (low < 12000) return 'High'
+  return 'Very High'
+}
+
 export default function Examples() {
   const [examples, setExamples] = useState([])
   const [loading, setLoading] = useState(true)
@@ -160,15 +185,18 @@ export default function Examples() {
         <div className="space-y-6">
           {sortedFrequencies.map(freq => {
             const group = groupedExamples[freq]
+            const bandFreqs = parseBandFrequencies(group.band)
+            const bandLabel = getBandLabel(group.band)
+            const title = bandFreqs 
+              ? `${bandLabel} band (${hzToLabelWithNote(bandFreqs.low)} — ${hzToLabelWithNote(bandFreqs.high)})`
+              : `${bandLabel} band (${group.band})`
+            
             return (
               <Card key={freq}>
                 <CardHeader>
                   <CardTitle>
-                    {hzToLabelWithNote(freq)} — {group.frequencyLabel}
+                    {title}
                   </CardTitle>
-                  <CardDescription>
-                    Frequency band: {group.band}
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -442,7 +442,7 @@ export default function Home() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 p-4">
+    <div className="max-w-7xl mx-auto space-y-4 p-2 md:p-4">
       {/* Header - Compact */}
       {/* <div className="text-center space-y-1 mb-4">
         <h1 className="text-2xl font-bold text-primary">Tinnitus Assessment & Therapy</h1>
@@ -452,15 +452,15 @@ export default function Home() {
       </div> */}
 
       {/* Safety Warning - Compact */}
-      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-destructive/5 border border-destructive/20 rounded px-3 py-2">
+      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-destructive/5 border border-destructive/20 rounded px-2 md:px-3 py-2">
         <AlertCircle className="w-3 h-3 text-destructive flex-shrink-0" />
         <span><strong className="text-destructive">Safety:</strong> Start at low volume. Use headphones.</span>
       </div>
 
       {/* Main Content Row: Introduction + Assessment Tools */}
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
         {/* Left Column - Introduction */}
-        <Card className="col-span-3 border-2">
+        <Card className="col-span-1 md:col-span-3 border-2">
           <CardContent className="pt-4 pb-4 px-4">
             <div className="space-y-3">
               <h2 className="text-lg font-bold text-primary">Do you have tinnitus?</h2>
@@ -477,9 +477,9 @@ export default function Home() {
         </Card>
 
         {/* Right Column - Master Volume, Step 1 & Step 2 */}
-        <div className="col-span-9 grid grid-cols-9 gap-4">
+        <div className="col-span-1 md:col-span-9 grid grid-cols-1 md:grid-cols-9 gap-4">
         {/* Master Volume - Vertical Slider */}
-        <Card className="col-span-1 border-2">
+        <Card className="col-span-1 md:col-span-1 border-2">
           <CardContent className="pt-6 pb-6 px-3">
             <div className="flex flex-col items-center gap-3 h-full">
               <label className="text-xs font-bold tracking-wider writing-vertical-rl text-center">
@@ -565,7 +565,7 @@ export default function Home() {
         </Card>
 
         {/* Step 1 */}
-        <Card className="col-span-3 border-2 h-full">
+        <Card className="col-span-1 md:col-span-3 border-2 h-full">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold">Step 1 — Tone ↔ Noise Blend</CardTitle>
             <CardDescription className="text-xs">
@@ -605,7 +605,7 @@ export default function Home() {
       </Card>
 
         {/* Step 2 */}
-        <Card className="col-span-5 border-2 h-full">
+        <Card className="col-span-1 md:col-span-5 border-2 h-full">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold">Step 2 — Find your tinnitus frequency</CardTitle>
             <CardDescription className="text-xs">
@@ -613,11 +613,13 @@ export default function Home() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2 md:gap-4">
             <Button 
               onClick={startAB} 
               disabled={!audioCtx} 
               variant="outline"
+              size="sm"
+              className="flex-1 md:flex-initial"
             >
               {trial === 0 ? 'Start Pitch Match' : 'Restart'}
             </Button>
@@ -626,6 +628,8 @@ export default function Home() {
                 onClick={playCurrentTrial} 
                 disabled={!audioCtx || trial > maxTrials} 
                 variant="outline"
+                size="sm"
+                className="flex-1 md:flex-initial"
               >
                 <Play className="w-4 h-4 mr-2" />
                 Replay
@@ -635,6 +639,8 @@ export default function Home() {
               onClick={() => pickAB("A")}
               disabled={!audioCtx || trial === 0 || trial > maxTrials || !abStatus.includes("Pick which")}
               variant="outline"
+              size="sm"
+              className="flex-1 md:flex-initial"
             >
               A is Closer
             </Button>
@@ -642,6 +648,8 @@ export default function Home() {
               onClick={() => pickAB("B")}
               disabled={!audioCtx || trial === 0 || trial > maxTrials || !abStatus.includes("Pick which")}
               variant="outline"
+              size="sm"
+              className="flex-1 md:flex-initial"
             >
               B is Closer
             </Button>
@@ -650,7 +658,8 @@ export default function Home() {
                 onClick={markBInaudible}
                 disabled={!audioCtx || trial > maxTrials || !abStatus.includes("Pick which")}
                 variant="outline"
-                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                size="sm"
+                className="border-destructive/50 text-destructive hover:bg-destructive/10 flex-1 md:flex-initial"
               >
                 B Inaudible
               </Button>
@@ -815,12 +824,12 @@ export default function Home() {
             Phase Modulation: Subtle timing variations (default). Amplitude Modulation: Volume pulsing effect.
           </p>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:gap-4">
             <Button
               onClick={exportConfig}
               disabled={!audioCtx || generating}
               variant="outline"
-              className="flex-1"
+              className="flex-1 w-full sm:w-auto"
             >
               <Download className="w-4 h-4 mr-2" />
               Export Assessment Config
@@ -828,7 +837,7 @@ export default function Home() {
             <Button
               onClick={generateSounds}
               disabled={generating || !genTinnitusHz || genTinnitusHz <= 0}
-              className="flex-1"
+              className="flex-1 w-full sm:w-auto"
             >
               {generating ? (
                 <>
@@ -883,7 +892,7 @@ export default function Home() {
         <CardContent>
           {generatedFiles ? (
             <div className="space-y-6">
-              <div className="flex items-center justify-between p-3 bg-card rounded border">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-card rounded border gap-2">
                 <div>
                   <p className="text-sm font-semibold">
                     {hzToLabelWithNote(generatedFiles.tinnitusHz)} • {generatedFiles.mode} mode • {generatedFiles.minutes} min
@@ -898,7 +907,7 @@ export default function Home() {
               <div className={`grid gap-4 ${generatedFiles.sham ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                 {/* Active Therapy */}
                 <div className="p-4 border-2 border-primary/30 rounded-lg bg-card space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-primary">Active Therapy</h3>
                       <p className="text-xs text-muted-foreground">Band: {generatedFiles.activeBand.name}</p>
@@ -908,6 +917,7 @@ export default function Home() {
                         onClick={() => playFile(generatedFiles.active, 'active')}
                         variant={playingFile === generatedFiles.active ? 'default' : 'outline'}
                         size="sm"
+                        className="flex-1 sm:flex-initial"
                       >
                         <Play className="w-4 h-4 mr-2" />
                         {playingFile === generatedFiles.active ? 'Stop' : 'Play'}
@@ -926,7 +936,7 @@ export default function Home() {
                 {/* Control/Sham - Only show if generated */}
                 {generatedFiles.sham && (
                   <div className="p-4 border-2 border-border rounded-lg bg-card space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div>
                         <h3 className="font-semibold">Control/Sham</h3>
                         <p className="text-xs text-muted-foreground">Band: {generatedFiles.shamBand.name}</p>
@@ -936,6 +946,7 @@ export default function Home() {
                           onClick={() => playFile(generatedFiles.sham, 'sham')}
                           variant={playingFile === generatedFiles.sham ? 'default' : 'outline'}
                           size="sm"
+                          className="flex-1 sm:flex-initial"
                         >
                           <Play className="w-4 h-4 mr-2" />
                           {playingFile === generatedFiles.sham ? 'Stop' : 'Play'}
