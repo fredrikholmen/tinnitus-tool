@@ -368,8 +368,8 @@ async function generateFile(filepath, band, { sampleRate, minutes, blockSec, ram
       onProgress({
         file: path.basename(filepath),
         block: b + 1,
-        totalBlocks: blocks,
-        progress: ((b + 1) / blocks) * progressScale,
+        totalBlocks: totalBlocks, // Use totalBlocks to account for remainder
+        progress: ((b + 1) / totalBlocks) * progressScale, // Use totalBlocks in denominator
       });
       // Yield control to allow SSE stream to flush
       await new Promise(resolve => setImmediate(resolve));
