@@ -885,18 +885,33 @@ export default function Home() {
             <CardContent className="space-y-8 py-8">
               {!selectedLargeBand ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {LARGE_BANDS.map((band, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleLargeBandSelect(band)}
-                      className="p-6 border-2 border-primary/30 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left"
-                    >
-                      <div className="font-semibold text-lg mb-2">{band.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {hzToLabel(band.lo)} - {hzToLabel(band.hi)}
-                      </div>
-                    </button>
-                  ))}
+                  {LARGE_BANDS.map((band, idx) => {
+                    const centerFreq = Math.sqrt(band.lo * band.hi)
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleLargeBandSelect(band)}
+                        className="p-6 border-2 border-primary/30 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left"
+                      >
+                        <div className="font-semibold text-lg mb-2">{band.name}</div>
+                        <div className="text-sm text-muted-foreground mb-3">
+                          {hzToLabelWithNote(band.lo)} — {hzToLabelWithNote(band.hi)}
+                        </div>
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            playBandSound(band)
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                        >
+                          <Volume2 className="w-4 h-4 mr-2" />
+                          Listen ({hzToLabelWithNote(centerFreq)})
+                        </Button>
+                      </button>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="space-y-4">
