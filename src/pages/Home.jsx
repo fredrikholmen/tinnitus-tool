@@ -139,8 +139,11 @@ export default function Home() {
     }
   }, [])
 
-  const playTone = (freqHz, durationSec, gain) => {
+  const playTone = async (freqHz, durationSec, gain) => {
     if (!audioCtx || !masterGain) return
+    // Resume audio context if suspended (required for iOS)
+    await ensureAudioResumed()
+    
     const osc = audioCtx.createOscillator()
     osc.type = "sine"
     osc.frequency.value = freqHz
@@ -158,8 +161,10 @@ export default function Home() {
     osc.stop(now + durationSec)
   }
 
-  const playNarrowbandNoise = (centerHz, durationSec, gain) => {
+  const playNarrowbandNoise = async (centerHz, durationSec, gain) => {
     if (!audioCtx || !masterGain) return
+    // Resume audio context if suspended (required for iOS)
+    await ensureAudioResumed()
     const bufferSize = Math.floor(audioCtx.sampleRate * durationSec)
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate)
     const data = buffer.getChannelData(0)
@@ -185,8 +190,11 @@ export default function Home() {
     src.stop(now + durationSec)
   }
 
-  const playHybrid = (freqHz, durationSec, gain, blendRatio) => {
+  const playHybrid = async (freqHz, durationSec, gain, blendRatio) => {
     if (!audioCtx || !masterGain) return
+    
+    // Resume audio context if suspended (required for iOS)
+    await ensureAudioResumed()
     
     const toneGain = gain * (1 - blendRatio)
     const noiseGain = gain * blendRatio
@@ -209,8 +217,19 @@ export default function Home() {
     setMasterGain(gain)
   }
 
-  const calibrationTone = () => {
-    playTone(1000, 1.2, 0.15)
+  // Resume audio context if suspended (required for iOS)
+  const ensureAudioResumed = async () => {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      try {
+        await audioCtx.resume()
+      } catch (e) {
+        console.warn('Failed to resume audio context:', e)
+      }
+    }
+  }
+
+  const calibrationTone = async () => {
+    await playTone(1000, 1.2, 0.15)
   }
 
   useEffect(() => {
@@ -220,7 +239,7 @@ export default function Home() {
   }, [masterLevel, masterGain])
 
   // Auto-play blend slider from 0 to 1
-  const startBlendAutoPlay = () => {
+  const startBlendAutoPlay = async () => {
     if (blendAutoPlaying) {
       stopBlendAutoPlay()
       return
@@ -234,18 +253,19 @@ export default function Home() {
     const duration = 0.5
     const gain = 0.12
     
-    // Play initial sound
-    playHybrid(centerFreq, duration, gain, 0)
+    // Play initial sound (await to ensure audio context is resumed on iOS)
+    await playHybrid(centerFreq, duration, gain, 0)
     
     blendIntervalRef.current = setInterval(() => {
       setBlend(prev => {
         const next = Math.min(1.0, prev + 0.01)
         if (next >= 1.0) {
           stopBlendAutoPlay()
+          // Fire and forget - audio context should already be resumed
           playHybrid(centerFreq, duration, gain, 1.0)
           return 1.0
         }
-        // Play sound at current blend
+        // Play sound at current blend (fire and forget)
         playHybrid(centerFreq, duration, gain, next)
         return next
       })
@@ -268,9 +288,9 @@ export default function Home() {
     }
   }, [])
 
-  const playBandSound = (band) => {
+  const playBandSound = async (band) => {
     const centerFreq = Math.sqrt(band.lo * band.hi)
-    playHybrid(centerFreq, 1.0, 0.12, blend)
+    await playHybrid(centerFreq, 1.0, 0.12, blend)
   }
 
   // Advanced assessment functions
@@ -281,7 +301,7 @@ export default function Home() {
     nextABTrial()
   }
 
-  const playCurrentTrial = () => {
+  const playCurrentTrial = async () => {
     if (!lastPair) {
       if (trial === 0) {
         startAB()
@@ -297,7 +317,8 @@ export default function Home() {
 
     setAbStatus(`Trial ${trial}/${maxTrials}: Playing A (${hzToLabelWithNote(AHz)}) then B (${hzToLabelWithNote(BHz)})…`)
     
-    playHybrid(AHz, d, gain, blend)
+    // Ensure audio context is resumed before playing
+    await playHybrid(AHz, d, gain, blend)
     setTimeout(() => playHybrid(BHz, d, gain, blend), (d + 0.25) * 1000)
 
     setTimeout(() => {
@@ -898,9 +919,9 @@ export default function Home() {
                           {hzToLabelWithNote(band.lo)} — {hzToLabelWithNote(band.hi)}
                         </div>
                         <Button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation()
-                            playBandSound(band)
+                            await playBandSound(band)
                           }}
                           variant="outline"
                           size="sm"
@@ -943,9 +964,9 @@ export default function Home() {
                           {hzToLabel(subBand.lo)} - {hzToLabel(subBand.hi)}
                         </div>
                         <Button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation()
-                            playBandSound(subBand)
+                            await playBandSound(subBand)
                           }}
                           variant="ghost"
                           size="sm"
@@ -1235,7 +1256,7 @@ export default function Home() {
                   Blend: {blend === 0 ? 'Pure Tone' : blend === 1 ? 'Pure Noise' : `${Math.round(blend * 100)}% Noise`}
                 </label>
                 <Button
-                  onClick={() => playHybrid(estimateHz, 0.8, 0.12, blend)}
+                  onClick={async () => await playHybrid(estimateHz, 0.8, 0.12, blend)}
                   disabled={!audioCtx}
                   variant="outline"
                   size="sm"
